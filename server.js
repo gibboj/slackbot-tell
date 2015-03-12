@@ -22,13 +22,18 @@ var REDIS_KEY = "reminders",
       "/ask": ["told", "ask"]
     };
 
-moment.lang("en-custom", {
+moment.locale("en-custom", {
   calendar : {
     lastDay: "[yesterday at] LT",
     sameDay: "[today at] LT",
     nextDay: "[tomorrow at] LT",
     lastWeek: "[last] dddd [at] LT"
   },
+    relativeTime: {
+        future: "in %s",
+        m: "a minute",
+        mm: "%d minutes"
+    },
   longDateFormat : {
     LT: "h:mma"
   }
@@ -84,7 +89,7 @@ app.post("/", function(req, res, next) {
   var parts = req.body.text.split(" "),
       who = parts.shift(),
       what = parts.join(" "),
-      when = chrono.parse(what)[0],
+      when = chrono.parse(what, new Date().getTime() + TZ_OFFSET * 60 * 1000)[0],
       by = req.body.user_name,
       verbs = VERBS[req.body.command];
 
@@ -92,24 +97,23 @@ app.post("/", function(req, res, next) {
     who = by;
   }
 
-  if (who.charAt(0) !== "@") {
+  if (who.charAt(0) !== "@" | who.charAt(0) !== "#") {
     who = "@" + who;
   }
 
   if (by.charAt(0) !== "@") {
     by = "@" + by;
   }
-
   if (!when) {
     return res.send("Um, I couldn't figure out when you meant.");
   }
 
   var body = what.slice(0, when.index - 1) + what.slice(when.index + when.text.length),
       msg = util.format("%s %s me to %s you %s",
-                        by,
-                        verbs[0],
-                        verbs[1],
-                        body),
+            by,
+            verbs[0],
+            verbs[1],
+            body),
       score = when.startDate.getTime() + TZ_OFFSET * 60 * 1000;
 
   var reminder = {
@@ -120,21 +124,21 @@ app.post("/", function(req, res, next) {
   };
 
   return client.zadd(REDIS_KEY,
-                     score,
-                     JSON.stringify(reminder),
-                     function(err) {
+        when.startDate.getTime(),
+        JSON.stringify(reminder),
+        function(err) {
     if (err) {
       return next(err);
     }
 
-    return res.send(201, util.format("Ok, I'll %s %s %s %s.",
-                                     verbs[1],
-                                     who,
-                                     body,
-                                     moment(score).zone(TZ_OFFSET).calendar()));
+    return res.status(201).send( util.format("Ok, I'll %s %s %s %s.",
+                verbs[1],
+                who,
+                body,
+                moment(score).zone(TZ_OFFSET).calendar()));
   });
 });
 
-app.listen(process.env.PORT || 8080, function() {
+app.listen(process.env.PORT || 8096, function() {
   console.log("Listening at http://%s:%d/", this.address().address, this.address().port);
 });
